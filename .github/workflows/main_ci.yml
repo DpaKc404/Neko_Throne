@@ -196,12 +196,6 @@ jobs:
         shell: bash
         run: ccache -s
 
-      # ── Remove debug files ─────────────────────────────────────────────
-      - name: Remove debug files
-        shell: bash
-        run: |
-          rm -f deployment/**/*.debug deployment/**/*.pdb 2>/dev/null || true
-
       # ── Upload ─────────────────────────────────────────────────────────
       - name: Upload artifact
         uses: actions/upload-artifact@v4.6.2

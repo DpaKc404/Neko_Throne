@@ -72,8 +72,11 @@ echo ""
 echo ">> Packing Linux amd64..."
 if [[ -d linux-amd64 ]]; then
     mv linux-amd64 Throne
-    mv Throne/Neko_Throne.debug "debug/${version_standalone}-linux-amd64.debug" 2>/dev/null || \
-        mv Throne/Throne.debug "debug/${version_standalone}-linux-amd64.debug" 2>/dev/null || true
+    # Copy debug files to debug/ directory, then remove from archive
+    cp Throne/Neko_Throne.debug "debug/${version_standalone}-linux-amd64.debug" 2>/dev/null || \
+        cp Throne/Throne.debug "debug/${version_standalone}-linux-amd64.debug" 2>/dev/null || true
+    # Remove ALL debug files from the archive directory
+    rm -f Throne/*.debug Throne/Neko_Throne.debug Throne/Throne.debug 2>/dev/null || true
     zip -9 -r "${version_standalone}-linux-amd64.zip" Throne
     rm -rf Throne
 else
@@ -85,9 +88,10 @@ echo ""
 echo ">> Packing Windows 64-bit..."
 if [[ -d windows64 ]]; then
     mv windows64 Throne
-    # Support both old (Throne.pdb) and new (Neko_Throne.pdb) executable names
-    find Throne -maxdepth 1 -name "*.pdb" | head -1 | \
-        xargs -I{} mv {} "debug/${version_standalone}-windows64.pdb" 2>/dev/null || true
+    # Copy PDB files to debug/ directory, then remove from archive
+    find Throne -maxdepth 1 -name "*.pdb" -exec cp {} "debug/${version_standalone}-windows64.pdb" \; 2>/dev/null || true
+    # Remove ALL .pdb files from the archive directory
+    rm -f Throne/*.pdb 2>/dev/null || true
     zip -9 -r "${version_standalone}-windows64.zip" Throne
     rm -rf Throne
 else
