@@ -1086,7 +1086,6 @@ bool MainWindow::get_elevated_permissions(int reason) {
         on_menu_exit_triggered();
     }
 #endif
-#endif
     return false;
 }
 
