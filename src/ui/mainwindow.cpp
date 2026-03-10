@@ -1005,13 +1005,13 @@ void MainWindow::prepare_exit()
     }
 
     // Kill core process with timeout
-    QSemaphore killDone;
-    runOnThread([=, this, &killDone]()
+    auto killDone = std::make_shared<QSemaphore>();
+    runOnThread([=, this]()
     {
         core_process->Kill();
-        killDone.release();
+        killDone->release();
     }, DS_cores);
-    if (!killDone.tryAcquire(1, 5000)) {
+    if (!killDone->tryAcquire(1, 5000)) {
         qDebug() << "prepare_exit: core kill timed out, forcing termination";
         core_process->kill();
     }
@@ -1214,7 +1214,7 @@ void MainWindow::setupConnectionList()
 
 void MainWindow::UpdateConnectionList(const QMap<QString, Stats::ConnectionMetadata>& toUpdate, const QMap<QString, Stats::ConnectionMetadata>& toAdd)
 {
-    connectionListMu.lock();
+    QMutexLocker locker(&connectionListMu);
     ui->connections->setUpdatesEnabled(false);
     for (int row=0;row<ui->connections->rowCount();row++)
     {
@@ -1281,12 +1281,11 @@ void MainWindow::UpdateConnectionList(const QMap<QString, Stats::ConnectionMetad
         row++;
     }
     ui->connections->setUpdatesEnabled(true);
-    connectionListMu.unlock();
 }
 
 void MainWindow::UpdateConnectionListWithRecreate(const QList<Stats::ConnectionMetadata>& connections)
 {
-    connectionListMu.lock();
+    QMutexLocker locker(&connectionListMu);
     ui->connections->setUpdatesEnabled(false);
     ui->connections->setRowCount(0);
     int row=0;
@@ -1326,7 +1325,6 @@ void MainWindow::UpdateConnectionListWithRecreate(const QList<Stats::ConnectionM
         row++;
     }
     ui->connections->setUpdatesEnabled(true);
-    connectionListMu.unlock();
 }
 
 void MainWindow::setSearchState(bool enable)
@@ -2047,7 +2045,7 @@ void MainWindow::on_menu_select_all_triggered() {
     ui->proxyListTable->selectAll();
 }
 
-bool mw_sub_updating = false;
+std::atomic<bool> mw_sub_updating{false};
 
 void MainWindow::on_menu_update_subscription_triggered() {
     auto group = Configs::profileManager->CurrentGroup();

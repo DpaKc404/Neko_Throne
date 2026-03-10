@@ -160,8 +160,7 @@ void MainWindow::urltest_current_group(const QList<std::shared_ptr<Configs::Prox
                 auto configStr = buildObject->fullConfigs[entID];
                 auto func = [this, &counter, testCount, configStr, entID]() {
                     runURLTest(configStr, "", true, {}, {}, entID);
-                    ++counter;
-                    if (counter.load() == testCount) {
+                    if (++counter == testCount) {
                         speedtestRunning.unlock();
                     }
                 };
@@ -169,10 +168,9 @@ void MainWindow::urltest_current_group(const QList<std::shared_ptr<Configs::Prox
             }
 
             if (!buildObject->outboundTags.empty()) {
-                auto func = [this, &buildObject, &counter, testCount]() {
+                auto func = [this, buildObject, &counter, testCount]() {
                     runURLTest(QJsonObject2QString(buildObject->coreConfig, false),QJsonObject2QString(buildObject->xrayConfig, false), false, buildObject->outboundTags, buildObject->tag2entID);
-                    ++counter;
-                    if (counter.load() == testCount) {
+                    if (++counter == testCount) {
                         speedtestRunning.unlock();
                     }
                 };
