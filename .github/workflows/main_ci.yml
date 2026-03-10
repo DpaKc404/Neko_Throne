@@ -114,11 +114,21 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1.13.0
         with: { arch: x86_64 }
 
-      - name: Install ccache
+      - name: Install build dependencies
         shell: bash
         run: |
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq ccache
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq \
+              ccache ninja-build \
+              libx11-dev libx11-xcb-dev libxcb-cursor-dev \
+              libxkbcommon-dev libxkbcommon-x11-dev \
+              libgl1-mesa-dev \
+              libdbus-1-dev \
+              libwayland-dev \
+              libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+              libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
+              libxcb-xfixes0-dev libxcb-xinerama0-dev libxcb-xkb-dev
           else
             choco install ccache -y
           fi
@@ -207,7 +217,7 @@ jobs:
   # ─── Release ──────────────────────────────────────────────────────────────
   release:
     name: Release
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/Dev'))
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build]

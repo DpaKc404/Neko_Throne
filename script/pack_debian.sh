@@ -7,7 +7,7 @@ mkdir -p Throne/DEBIAN
 mkdir -p Throne/opt
 cp -r linux-amd64 Throne/opt
 mv Throne/opt/linux-amd64 Throne/opt/Throne
-rm Throne/opt/Throne/Throne.debug
+rm -f Throne/opt/Throne/Neko_Throne.debug Throne/opt/Throne/Throne.debug 2>/dev/null || true
 
 # basic
 cat >Throne/DEBIAN/control <<-EOF
