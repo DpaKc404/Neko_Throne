@@ -50,14 +50,14 @@ void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, bo
     req.xray_config = xrayConfig.toStdString();
     req.need_xray = !xrayConfig.isEmpty();
 
-    QSemaphore done(0);
+    std::atomic<bool> testFinished{false};
+    QSemaphore pollingDone(0);
     runOnNewThread([&,this]
     {
         bool ok;
-        while (true)
+        while (!testFinished.load())
         {
             QThread::msleep(200);
-            if (done.available() > 0) break;
             auto resp = defaultClient->QueryURLTest(&ok);
             if (!ok || resp.results.empty())
             {
@@ -98,12 +98,12 @@ void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, bo
                 });
             }
         }
-        done.release(1);
+        pollingDone.release(1);
     });
     bool rpcOK;
     auto result = defaultClient->Test(&rpcOK, req);
-    
-    done.acquire();
+    testFinished.store(true);
+    pollingDone.acquire();
     //
     if (!rpcOK || result.results.empty()) return;
 
@@ -283,7 +283,7 @@ void MainWindow::speedtest_current_group(const QList<std::shared_ptr<Configs::Pr
     });
 }
 
-void MainWindow::querySpeedtest(QDateTime lastProxyListUpdate, const QMap<QString, int>& tag2entID, bool testCurrent)
+void MainWindow::querySpeedtest(QDateTime& lastProxyListUpdate, const QMap<QString, int>& tag2entID, bool testCurrent)
 {
     bool ok;
     auto res = defaultClient->QueryCurrentSpeedTests(&ok);
@@ -296,23 +296,26 @@ void MainWindow::querySpeedtest(QDateTime lastProxyListUpdate, const QMap<QStrin
     {
         return;
     }
-    runOnUiThread([=, this, &lastProxyListUpdate]
+    bool shouldRefreshList = res.result.value().error.value().empty() && !res.result.value().cancelled.value() && lastProxyListUpdate.msecsTo(QDateTime::currentDateTime()) >= 500;
+    runOnUiThread([=, this]
     {
         showSpeedtestData = true;
         currentSptProfileName = profile->outbound->name;
         currentTestResult = res.result.value();
         UpdateDataView();
 
-        if (res.result.value().error.value().empty() && !res.result.value().cancelled.value() && lastProxyListUpdate.msecsTo(QDateTime::currentDateTime()) >= 500)
+        if (shouldRefreshList)
         {
             if (!res.result.value().dl_speed.value().empty()) profile->dl_speed = QString::fromStdString(res.result.value().dl_speed.value());
             if (!res.result.value().ul_speed.value().empty()) profile->ul_speed = QString::fromStdString(res.result.value().ul_speed.value());
             if (profile->latency <= 0 && res.result.value().latency.value() > 0) profile->latency = res.result.value().latency.value();
             if (!res.result->server_country.value().empty()) profile->test_country = CountryNameToCode(QString::fromStdString(res.result.value().server_country.value()));
             refresh_proxy_list(profile->id);
-            lastProxyListUpdate = QDateTime::currentDateTime();
         }
     });
+    if (shouldRefreshList) {
+        lastProxyListUpdate = QDateTime::currentDateTime();
+    }
 }
 
 void MainWindow::queryCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent)
@@ -369,16 +372,13 @@ void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, 
     req.need_xray = !xrayConfig.isEmpty();
 
     // loop query result
-    QSemaphore doneMu(0);
+    std::atomic<bool> speedTestFinished{false};
+    QSemaphore speedPollDone(0);
     runOnNewThread([&,this]
     {
         QDateTime lastProxyListUpdate = QDateTime::currentDateTime();
-        while (true) {
+        while (!speedTestFinished.load()) {
             QThread::msleep(100);
-            if (doneMu.available() > 0)
-            {
-                break;
-            }
             if (speedtestConf == Configs::TestConfig::COUNTRY)
             {
                 queryCountryTest(tag2entID, testCurrent);
@@ -392,12 +392,12 @@ void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, 
             showSpeedtestData = false;
             UpdateDataView(true);
         });
-        doneMu.release(1);
+        speedPollDone.release(1);
     });
     bool rpcOK;
     auto result = defaultClient->SpeedTest(&rpcOK, req);
-    
-    doneMu.acquire();
+    speedTestFinished.store(true);
+    speedPollDone.acquire();
     //
     if (!rpcOK || result.results.empty()) return;
 

@@ -277,7 +277,7 @@ private:
 
     void setupConnectionList();
 
-    void querySpeedtest(QDateTime lastProxyListUpdate, const QMap<QString, int>& tag2entID, bool testCurrent);
+    void querySpeedtest(QDateTime& lastProxyListUpdate, const QMap<QString, int>& tag2entID, bool testCurrent);
 
     void queryCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent);
 
