@@ -250,12 +250,6 @@ namespace Configs {
             if (ctx->tunEnabled && ctx->isResolvedUsed) {
                 return {{"type", "underlying"}};
             }
-            if (ctx->tunEnabled && ctx->os == Darwin) {
-                return {
-                    {"type", "udp"},
-                    {"server", dataStore->core_box_underlying_dns}
-                };
-            }
             return {{"type", "local"}};
         }
         if (address.startsWith("dhcp://")) {
@@ -321,12 +315,6 @@ namespace Configs {
     }
 
     void buildDNSSection(std::shared_ptr<BuildSingBoxConfigContext> &ctx, bool useDnsObj) {
-        if (getOS() == Darwin && dataStore->core_box_underlying_dns.isEmpty() && dataStore->spmode_vpn)
-        {
-            ctx->error = QObject::tr("Local DNS and Tun mode do not work together, please set an IP to be used as the Local DNS server in the Routing Settings -> Local override");
-            return;
-        }
-
         if (dataStore->routing->use_dns_object && useDnsObj) {
             ctx->buildConfigResult->coreConfig["dns"] = QString2QJsonObject(dataStore->routing->dns_object);
             return;
