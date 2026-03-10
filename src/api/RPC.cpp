@@ -9,6 +9,7 @@
 #include <QtEndian>
 #include <QThread>
 #include <QMutex>
+#include <QSemaphore>
 #include <QAbstractNetworkCache>
 
 namespace QtGrpc {
