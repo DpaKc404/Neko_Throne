@@ -3,6 +3,7 @@
 #include "include/dataStore/ProfileFilter.hpp"
 #include "include/configs/sub/GroupUpdater.hpp"
 #include "include/sys/Process.hpp"
+#include "include/sys/NetworkLeakGuard.hpp"
 #include "include/sys/AutoRun.hpp"
 
 #include "include/ui/setting/ThemeManager.hpp"
@@ -1016,6 +1017,10 @@ void MainWindow::prepare_exit()
         qDebug() << "prepare_exit: core kill timed out, forcing termination";
         core_process->kill();
     }
+
+    // Ensure IPv6 and leak guard are restored before exit
+    NetworkLeakGuard::instance()->stopMonitoring();
+    NetworkLeakGuard::instance()->restoreIPv6();
 
     mu_exit.unlock();
     qDebug() << "prepare exit done!";

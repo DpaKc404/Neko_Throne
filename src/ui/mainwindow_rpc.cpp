@@ -14,6 +14,7 @@
 
 #include "include/configs/generate.h"
 #include "include/sys/Process.hpp"
+#include "include/sys/NetworkLeakGuard.hpp"
 
 // rpc
 
@@ -546,6 +547,14 @@ void MainWindow::profile_start(int _id) {
         Stats::trafficLooper->loop_enabled = true;
         Stats::connection_lister->suspend = false;
 
+        // IPv6 leak prevention when TUN is active and IPv6 is disabled
+        if (Configs::dataStore->spmode_vpn && !Configs::dataStore->vpn_ipv6) {
+            NetworkLeakGuard::instance()->blockIPv6Leaks();
+        }
+        if (Configs::dataStore->spmode_vpn) {
+            NetworkLeakGuard::instance()->startMonitoring();
+        }
+
         Configs::dataStore->UpdateStartedId(ent->id);
         running = ent;
 
@@ -696,6 +705,10 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
         if (!profile_stop_stage2()) {
             MW_show_log("<<<<<<<< " + tr("Failed to stop, please restart the program."));
         }
+
+        // Stop leak guard monitoring and restore IPv6
+        NetworkLeakGuard::instance()->stopMonitoring();
+        NetworkLeakGuard::instance()->restoreIPv6();
 
         if (manual) Configs::dataStore->UpdateStartedId(-1919);
         Configs::dataStore->need_keep_vpn_off = false;

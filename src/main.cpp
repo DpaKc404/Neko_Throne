@@ -242,10 +242,13 @@ int main(int argc, char* argv[]) {
         default:
             locale = QLocale().name();
     }
-    QGuiApplication::tr("QT_LAYOUT_DIRECTION");
     // Try TranslationManager first (external lang/), fall back to legacy
     if (!locale.isEmpty() && !TranslationManager::instance()->switchLanguage(locale)) {
         loadTranslate(locale);
+    }
+    // Apply RTL layout direction from translation (e.g. fa_IR → RTL)
+    if (QGuiApplication::tr("QT_LAYOUT_DIRECTION") == QLatin1String("RTL")) {
+        QGuiApplication::setLayoutDirection(Qt::RightToLeft);
     }
 
     // Check if another instance is running
