@@ -1,0 +1,233 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Neko Throne CI/CD — amd64 only (Linux + Windows)
+# ═══════════════════════════════════════════════════════════════════════════════
+name: Neko Throne CI/CD (amd64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release Tag and version"
+        required: false
+        default: ""
+      publish:
+        description: "r for normal release, p for prerelease, leave empty to not publish anything"
+        required: false
+  push:
+    branches: ["08/03/2026_EXPEREMENTAL"]
+    paths-ignore: ["**.md", LICENSE, "docs/**"]
+
+env:
+  QT_VERSION: "6.10.2"
+  GO_VERSION: "1.25.8"
+  CCACHE_MAXSIZE: 500M
+  CCACHE_COMPRESS: "true"
+  CCACHE_COMPRESSLEVEL: "6"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ═════════════════════════════════════════════════════════════════════════════
+jobs:
+
+  # ─── Lint ─────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with: { submodules: recursive }
+      - run: ./scripts/ci/lint.sh
+      - uses: actions/upload-artifact@v4.6.2
+        if: always()
+        with: { name: lint-report, path: lint-report/, retention-days: 7 }
+
+  # ─── Build (Go + C++ in one job) ─────────────────────────────────────────
+  build:
+    name: "${{ matrix.os_label }}"
+    permissions: { contents: read }
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: ubuntu-22.04,   os_label: linux,   cross_os: linux,   cross_arch: amd64 }
+          - { platform: windows-latest, os_label: windows, cross_os: windows, cross_arch: amd64 }
+    runs-on: ${{ matrix.platform }}
+    env:
+      INPUT_VERSION: ${{ github.event.inputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with: { submodules: recursive }
+
+      # ── Go backend ─────────────────────────────────────────────────────
+      - name: Cache Go artifacts
+        id: cache-go
+        uses: actions/cache@v4.2.3
+        with:
+          path: go-artifacts.tgz
+          key: go-${{ matrix.cross_os }}-${{ hashFiles('scripts/ci/build_go.sh', 'core/**') }}-${{ env.GO_VERSION }}
+
+      - name: Install Go
+        if: steps.cache-go.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: core/server/go.sum
+
+      - name: Setup Go toolchain + build
+        if: steps.cache-go.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GOOS: ${{ matrix.cross_os }}
+          GOARCH: ${{ matrix.cross_arch }}
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            PROTOC_VER="31.1"
+            curl -fLO --retry 3 "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VER}/protoc-${PROTOC_VER}-win64.zip"
+            unzip "protoc-${PROTOC_VER}-win64.zip" -d protoc_install
+            export PATH="$PWD/protoc_install/bin:$PATH"
+            echo "$PWD/protoc_install/bin" >> "$GITHUB_PATH"
+          else
+            ./scripts/ci/setup_go.sh
+          fi
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          ./scripts/ci/build_go.sh
+          tar czf go-artifacts.tgz ./deployment
+
+      - name: Unpack Go artifacts
+        shell: bash
+        run: |
+          tar xzf go-artifacts.tgz
+          ART="download-artifact/NekoThrone-go-${{ matrix.cross_os }}-${{ matrix.cross_arch }}"
+          mkdir -p "$ART"
+          cp go-artifacts.tgz "$ART/artifacts.tgz"
+
+      # ── C++ toolchain ──────────────────────────────────────────────────
+      - name: Install MSVC
+        if: matrix.os_label == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+        with: { arch: x86_64 }
+
+      - name: Install ccache
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq ccache
+          else
+            choco install ccache -y
+          fi
+
+      - name: Restore ccache (Linux)
+        if: matrix.os_label == 'linux'
+        uses: actions/cache@v4.2.3
+        with:
+          path: ~/.ccache
+          key: ccache-${{ matrix.os_label }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.os_label }}-
+
+      - name: Restore ccache (Windows)
+        if: matrix.os_label == 'windows'
+        uses: actions/cache@v4.2.3
+        with:
+          path: ~/AppData/Local/ccache
+          key: ccache-${{ matrix.os_label }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.os_label }}-
+
+      # ── Qt (platform-specific) ─────────────────────────────────────────
+      - name: Install Qt (Linux)
+        if: matrix.os_label == 'linux'
+        uses: jurplel/install-qt-action@v4.3.0
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+          cache-key-prefix: qt-linux
+
+      - name: Cache static Qt (Windows)
+        if: matrix.os_label == 'windows'
+        id: cache-win-qt
+        uses: actions/cache@v4.2.3
+        with:
+          path: qt6/build
+          key: win-qt-static-${{ env.QT_VERSION }}-${{ hashFiles('script/build_qt_static_windows.bat') }}
+
+      - name: Build static Qt (Windows)
+        if: matrix.os_label == 'windows' && steps.cache-win-qt.outputs.cache-hit != 'true'
+        shell: cmd
+        run: call .\script\build_qt_static_windows.bat ${{ env.QT_VERSION }}
+
+      # ── Configure, Build, Deploy ───────────────────────────────────────
+      - name: Build Neko Throne
+        shell: bash
+        run: |
+          mkdir -p build && cd build
+          curl -fLso srslist.h "https://raw.githubusercontent.com/throneproj/routeprofiles/rule-set/srslist.h"
+
+          CMAKE_ARGS=(
+            -GNinja
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          )
+
+          if [[ "${{ matrix.os_label }}" == "windows" ]]; then
+            export CMAKE_PREFIX_PATH="$PWD/../qt6/build/lib/cmake"
+          else
+            CMAKE_ARGS+=(-DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++")
+          fi
+
+          cmake "${CMAKE_ARGS[@]}" ..
+          ninja -j$(nproc 2>/dev/null || echo 4)
+          cd ..
+
+          if [[ "${{ matrix.os_label }}" == "windows" ]]; then
+            ./script/deploy_windows.sh
+          else
+            ./script/deploy_linux64.sh
+          fi
+
+      - name: ccache stats
+        if: always()
+        shell: bash
+        run: ccache -s
+
+      # ── Upload ─────────────────────────────────────────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: NekoThrone-${{ matrix.os_label }}-amd64
+          path: deployment/
+          retention-days: 30
+
+  # ─── Release ──────────────────────────────────────────────────────────────
+  release:
+    name: Release
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/08/03/2026_EXPEREMENTAL')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build]
+    permissions: { contents: write, actions: read }
+    env:
+      INPUT_VERSION: ${{ github.event.inputs.tag || format('nightly-{0}', github.run_number) }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/download-artifact@v4.3.0
+        with: { path: download-artifact }
+      - name: Determine publish mode
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "PUBLISH_MODE=p" >> "$GITHUB_ENV"
+          else
+            echo "PUBLISH_MODE=${{ github.event.inputs.publish }}" >> "$GITHUB_ENV"
+          fi
+      - name: Pack & publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/ci/release_pack.sh
+      - uses: actions/upload-artifact@v4.6.2
+        with: { name: debug-symbols, path: deployment/debug-symbols.zip }
