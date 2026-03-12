@@ -10,6 +10,7 @@
 namespace Configs_sys {
     CoreProcess::~CoreProcess() {
         if (state() == QProcess::Running) {
+            m_state = CoreLifecycleState::Stopping;
             terminate();
             if (!waitForFinished(3000)) {
                 kill();
@@ -20,6 +21,7 @@ namespace Configs_sys {
 
     void CoreProcess::Kill() {
         if (state() != QProcess::Running) return;
+        m_state = CoreLifecycleState::Stopping;
         terminate();
         if (!waitForFinished(1500)) {
             kill();
@@ -33,14 +35,16 @@ namespace Configs_sys {
 
         connect(this, &QProcess::readyReadStandardOutput, this, [this]() {
             auto log = readAllStandardOutput();
-            if (!Configs::dataStore->core_running) {
+            if (m_state == CoreLifecycleState::Starting) {
                 if (log.contains("Core listening at")) {
                     // The core really started
+                    m_state = CoreLifecycleState::Running;
                     Configs::dataStore->core_running = true;
                     MW_dialog_message("ExternalProcess", "CoreStarted," + Int2String(start_profile_when_core_is_up));
                     start_profile_when_core_is_up = -1;
                 } else if (log.contains("failed to serve")) {
                     // The core failed to start
+                    m_state = CoreLifecycleState::Failed;
                     kill();
                 }
             }
@@ -59,13 +63,18 @@ namespace Configs_sys {
         connect(this, &QProcess::errorOccurred, this, [this](ProcessError error) {
             if (error == FailedToStart) {
                 failed_to_start = true;
+                m_state = CoreLifecycleState::Failed;
                 MW_show_log("start core error occurred: " + errorString() + "\n");
             }
         });
         connect(this, &QProcess::stateChanged, this, [this](ProcessState state) {
             if (state == NotRunning) {
                 Configs::dataStore->core_running = false;
-                qDebug() << "Core stated changed to not running";
+                if (m_state != CoreLifecycleState::Restarting
+                    && m_state != CoreLifecycleState::Stopping) {
+                    m_state = CoreLifecycleState::Stopped;
+                }
+                qDebug() << "Core state changed to not running";
             }
 
             if (!Configs::dataStore->prepare_exit && state == NotRunning) {
@@ -100,6 +109,7 @@ namespace Configs_sys {
     void CoreProcess::Start() {
         if (started) return;
         started = true;
+        m_state = CoreLifecycleState::Starting;
 
         setEnvironment(QProcessEnvironment::systemEnvironment().toStringList());
         start(program, arguments);
@@ -107,11 +117,19 @@ namespace Configs_sys {
 
     void CoreProcess::Restart() {
         restarting = true;
+        m_state = CoreLifecycleState::Restarting;
         kill();
-        waitForFinished(1500);
+        // Wait for the old process to exit; force-kill if it takes too long
+        if (!waitForFinished(1500)) {
+            kill();
+            waitForFinished(500);
+        }
         started = false;
         Start();
-        restarting = false;
+        // Delay clearing the restarting flag so that any pending stateChanged
+        // signals from the dying process are delivered while restarting == true,
+        // preventing a spurious crash-restart cycle.
+        QTimer::singleShot(200, this, [this] { restarting = false; });
     }
 
 } // namespace Configs_sys
