@@ -139,8 +139,36 @@ jobs:
       # ── C++ инструментарий ─────────────────────────────────────────────
       - name: ⚙️ Установка MSVC
         if: matrix.os_label == 'windows'
-        uses: ilammy/msvc-dev-cmd@v1.13.0
-        with: { arch: x86_64 }
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * `
+            -requires Microsoft.VisualCpp.Tools.HostX64.TargetX64 `
+            -property installationPath
+          if (-not $vsPath) { throw "Visual Studio not found by vswhere" }
+          $vcvarsall = "$vsPath\VC\Auxiliary\Build\vcvarsall.bat"
+          if (-not (Test-Path $vcvarsall)) { throw "vcvarsall.bat not found: $vcvarsall" }
+          Write-Host "Configuring MSVC x64 from: $vcvarsall"
+
+          # Snapshot env before vcvarsall
+          $before = @{}
+          Get-ChildItem Env: | ForEach-Object { $before[$_.Name] = $_.Value }
+
+          # Run vcvarsall in cmd and capture resulting env via 'set'
+          $lines = cmd /c "`"$vcvarsall`" x64 > NUL 2>&1 && set"
+          foreach ($line in $lines) {
+            if ($line -match '^([^=]+)=(.*)$') {
+              $n = $Matches[1]; $v = $Matches[2]
+              if ($n -ieq 'PATH') {
+                $existing = ($before['PATH'] -split ';')
+                ($v -split ';') | Where-Object { $_ -and $_ -notin $existing } |
+                  Add-Content $env:GITHUB_PATH
+              } elseif (!$before.ContainsKey($n) -or $before[$n] -ne $v) {
+                Add-Content $env:GITHUB_ENV "$n=$v"
+              }
+            }
+          }
+          Write-Host "MSVC x64 environment configured"
 
       - name: 📚 Установка зависимостей сборки
         shell: bash
@@ -178,13 +206,45 @@ jobs:
           restore-keys: ccache-${{ matrix.os_label }}-
 
       # ── Qt (зависит от платформы) ──────────────────────────────────────
-      - name: 🖼️ Установка Qt (Linux)
+      - name: 🐍 Установка Python для Qt (Linux)
         if: matrix.os_label == 'linux'
-        uses: jurplel/install-qt-action@v4.3.0
+        uses: actions/setup-python@v6.2.0
         with:
-          version: ${{ env.QT_VERSION }}
-          cache: true
-          cache-key-prefix: qt-linux
+          python-version: '3.11'
+
+      - name: 🗂️ Кэш Qt (Linux)
+        if: matrix.os_label == 'linux'
+        id: cache-qt-linux
+        uses: actions/cache@v5.0.3
+        with:
+          path: ~/Qt
+          key: qt-linux-${{ env.QT_VERSION }}-aqt
+
+      - name: 🖼️ Установка Qt via aqt (Linux)
+        if: matrix.os_label == 'linux' && steps.cache-qt-linux.outputs.cache-hit != 'true'
+        run: |
+          pip install "aqtinstall==3.3.*" "py7zr==1.0.*"
+          aqt install-qt linux desktop ${{ env.QT_VERSION }} --outputdir ~/Qt
+
+      - name: 🔧 Настройка окружения Qt (Linux)
+        if: matrix.os_label == 'linux'
+        run: |
+          QT_BASE="$HOME/Qt/${{ env.QT_VERSION }}"
+          if [[ -d "$QT_BASE/gcc_64" ]]; then
+            QT_ROOT="$QT_BASE/gcc_64"
+          elif [[ -d "$QT_BASE/linux_gcc_64" ]]; then
+            QT_ROOT="$QT_BASE/linux_gcc_64"
+          else
+            echo "Qt installation not found. Contents of $QT_BASE:"
+            ls -la "$QT_BASE" 2>/dev/null || echo "(directory missing)"
+            exit 1
+          fi
+          echo "Qt root: $QT_ROOT"
+          echo "Qt6_DIR=$QT_ROOT/lib/cmake/Qt6" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$QT_ROOT" >> "$GITHUB_ENV"
+          echo "$QT_ROOT/bin" >> "$GITHUB_PATH"
+          echo "QT_PLUGIN_PATH=$QT_ROOT/plugins" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$QT_ROOT/lib" >> "$GITHUB_ENV"
 
       - name: 🗂️ Кэш статического Qt (Windows)
         if: matrix.os_label == 'windows'
