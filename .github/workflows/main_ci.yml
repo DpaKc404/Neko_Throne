@@ -46,6 +46,24 @@ jobs:
         if: always()
         with: { name: lint-report, path: lint-report/, retention-days: 7 }
 
+  # ─── Проверка Go-кода ─────────────────────────────────────────────────────
+  lint-go:
+    name: 🔍 Линтер Go
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with: { submodules: recursive }
+      - name: 🛠️ Установка Go
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: core/server/go.sum
+      - name: 🔍 go vet
+        working-directory: core/server
+        run: go vet ./...
+
   # ─── Сборка (Go + C++ в одном задании) ────────────────────────────────────
   build:
     name: "${{ matrix.os_label }}"

@@ -4,6 +4,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QDir>
 #include <QTimer>
 #include <QFile>
 #include <QApplication>
@@ -158,12 +159,25 @@ namespace Configs_network {
             GetMainWindow()->setDownloadReport({}, false);
             GetMainWindow()->UpdateDataView(true);
         });
+
+        // Read error and body BEFORE deleteLater to avoid use-after-free
+        const auto replyError = _reply->error();
+        const auto replyErrorString = _reply->errorString();
+        const auto replyData = _reply->readAll();
         _reply->deleteLater();
-        if(_reply->error() != QNetworkReply::NetworkError::NoError) {
-            return _reply->errorString();
+
+        if (replyError != QNetworkReply::NetworkError::NoError) {
+            return replyErrorString;
         }
 
-        auto filePath = Configs::GetBasePath()+ "/" + fileName;
+        // Support both absolute paths (e.g., core binary download) and
+        // relative filenames (rooted at GetBasePath()).
+        QString filePath;
+        if (QDir::isAbsolutePath(fileName)) {
+            filePath = fileName;
+        } else {
+            filePath = Configs::GetBasePath() + "/" + fileName;
+        }
         auto file = QFile(filePath);
         if (file.exists()) {
             file.remove();
@@ -171,7 +185,7 @@ namespace Configs_network {
         if (!file.open(QIODevice::WriteOnly)) {
             return QObject::tr("Could not open file.");
         }
-        file.write(_reply->readAll());
+        file.write(replyData);
         file.close();
         return "";
     }
