@@ -1,4 +1,5 @@
 #include "include/configs/common/multiplex.h"
+#include "include/configs/sub/clash.hpp"
 #include "include/configs/common/utils.h"
 
 namespace Configs {
@@ -76,6 +77,19 @@ namespace Configs {
         if (object.contains("max_streams")) max_streams = object["max_streams"].toInt();
         if (object.contains("padding")) padding = object["padding"].toBool();
         if (object.contains("brutal")) brutal->ParseFromJson(object["brutal"].toObject());
+        return true;
+    }
+    bool Multiplex::ParseFromClash(const clash::Proxies& object)
+    {
+        enabled = object.smux.enabled;
+        if (!object.smux.protocol.empty()) protocol = QString::fromStdString(object.smux.protocol);
+        if (object.smux.max_streams > 0) {
+            max_streams = object.smux.max_streams;
+        } else {
+            max_connections = object.smux.max_connections;
+            min_streams = object.smux.min_streams;
+        }
+        padding = object.smux.padding;
         return true;
     }
     QString Multiplex::ExportToLink()

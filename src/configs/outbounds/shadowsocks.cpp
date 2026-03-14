@@ -1,4 +1,5 @@
 #include "include/configs/outbounds/shadowsocks.h"
+#include "include/configs/sub/clash.hpp"
 
 #include <QUrlQuery>
 #include <include/global/Utils.hpp>
@@ -59,6 +60,38 @@ namespace Configs {
             if (object["udp_over_tcp"].isObject()) uot = object["udp_over_tcp"].toObject()["enabled"].toBool();
         }
         if (object.contains("multiplex")) multiplex->ParseFromJson(object["multiplex"].toObject());
+        return true;
+    }
+
+    bool shadowsocks::ParseFromClash(const clash::Proxies& object)
+    {
+        if (object.type != "ss") return false;
+        outbound::ParseFromClash(object);
+        method = QString::fromStdString(object.cipher);
+        password = QString::fromStdString(object.password);
+        uot = object.udp_over_tcp;
+        if (!object.plugin.empty()) {
+            if (object.plugin == "v2ray-plugin") {
+                plugin = "v2ray-plugin";
+                QStringList ssPlugin;
+                clash::v2rayPlugin plugin_config = object.plugin_opts.get_value<clash::v2rayPlugin>();
+                if (plugin_config.tls) ssPlugin << "tls";
+                if (!plugin_config.host.empty()) ssPlugin << "host=" + QString::fromStdString(plugin_config.host);
+                if (!plugin_config.path.empty()) ssPlugin << "path=" + QString::fromStdString(plugin_config.path);
+                if (!plugin_config.mode.empty()) ssPlugin << "mode=" + QString::fromStdString(plugin_config.mode);
+                if (plugin_config.mux) ssPlugin << "mux";
+                plugin_opts = ssPlugin.join(";");
+            } else if (object.plugin == "obfs") {
+                plugin = "obfs-local";
+                QStringList ssPlugin;
+                clash::obfs plugin_config = object.plugin_opts.get_value<clash::obfs>();
+                if (!plugin_config.mode.empty()) ssPlugin << "obfs=" + QString::fromStdString(plugin_config.mode);
+                if (!plugin_config.host.empty()) ssPlugin << "obfs-host=" + QString::fromStdString(plugin_config.host);
+                plugin_opts = ssPlugin.join(";");
+            }
+        }
+
+        multiplex->ParseFromClash(object);
         return true;
     }
 

@@ -1,4 +1,5 @@
 #include "include/configs/outbounds/xrayVless.h"
+#include "include/configs/sub/clash.hpp"
 
 #include <QUrlQuery>
 
@@ -35,6 +36,17 @@ namespace Configs {
         if (auto muxObj = object["mux"].toObject(); !muxObj.isEmpty()) {
             multiplex->ParseFromJson(muxObj);
         }
+        return true;
+    }
+
+    bool xrayVless::ParseFromClash(const clash::Proxies& object) {
+        if (object.type != "vless") return false;
+        outbound::ParseFromClash(object);
+        uuid = QString::fromStdString(object.uuid);
+        if (!object.flow.empty()) flow = QString::fromStdString(object.flow);
+        if (!object.encryption.empty()) encryption = QString::fromStdString(object.encryption);
+        streamSetting->ParseFromClash(object);
+        multiplex->ParseFromClash(object);
         return true;
     }
 

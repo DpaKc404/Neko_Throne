@@ -1,4 +1,5 @@
 #include "include/configs/outbounds/vless.h"
+#include "include/configs/sub/clash.hpp"
 
 #include <QUrlQuery>
 #include <include/global/Utils.hpp>
@@ -41,6 +42,20 @@ namespace Configs {
         if (object.contains("tls")) tls->ParseFromJson(object["tls"].toObject());
         if (object.contains("transport")) transport->ParseFromJson(object["transport"].toObject());
         if (object.contains("multiplex")) multiplex->ParseFromJson(object["multiplex"].toObject());
+        return true;
+    }
+
+    bool vless::ParseFromClash(const clash::Proxies& object)
+    {
+        if (object.type != "vless") return false;
+        outbound::ParseFromClash(object);
+        uuid = QString::fromStdString(object.uuid);
+        if (!object.flow.empty()) flow = QString::fromStdString(object.flow);
+        if (!object.packet_encoding.empty()) packet_encoding = QString::fromStdString(object.packet_encoding);
+
+        tls->ParseFromClash(object);
+        transport->ParseFromClash(object);
+        multiplex->ParseFromClash(object);
         return true;
     }
 

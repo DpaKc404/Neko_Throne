@@ -1,4 +1,5 @@
 #include "include/configs/outbounds/trojan.h"
+#include "include/configs/sub/clash.hpp"
 
 #include <QUrlQuery>
 #include <include/global/Utils.hpp>
@@ -26,6 +27,18 @@ namespace Configs {
         if (object.contains("tls")) tls->ParseFromJson(object["tls"].toObject());
         if (object.contains("transport")) transport->ParseFromJson(object["transport"].toObject());
         if (object.contains("multiplex")) multiplex->ParseFromJson(object["multiplex"].toObject());
+        return true;
+    }
+    bool Trojan::ParseFromClash(const clash::Proxies& object)
+    {
+        if (object.type != "trojan") return false;
+        outbound::ParseFromClash(object);
+        password = QString::fromStdString(object.password);
+
+        tls->ParseFromClash(object);
+        tls->enabled = true;
+        transport->ParseFromClash(object);
+        multiplex->ParseFromClash(object);
         return true;
     }
     QString Trojan::ExportToLink()

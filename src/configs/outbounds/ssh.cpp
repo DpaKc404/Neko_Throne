@@ -1,4 +1,5 @@
 #include "include/configs/outbounds/ssh.h"
+#include "include/configs/sub/clash.hpp"
 
 #include <QJsonArray>
 #include <QUrlQuery>
@@ -62,6 +63,24 @@ namespace Configs {
             host_key_algorithms = QJsonArray2QListString(object["host_key_algorithms"].toArray());
         }
         if (object.contains("client_version")) client_version = object["client_version"].toString();
+        return true;
+    }
+
+    bool ssh::ParseFromClash(const clash::Proxies& object)
+    {
+        if (object.type != "ssh") return false;
+        outbound::ParseFromClash(object);
+        user = QString::fromStdString(object.username);
+        password = QString::fromStdString(object.password);
+        if (!object.private_key.empty()) private_key = QString::fromStdString(object.private_key);
+        if (!object.private_key_passphrase.empty()) private_key_passphrase = QString::fromStdString(object.private_key_passphrase);
+        for (const auto& s : object.host_key) {
+            host_key.append(QString::fromStdString(s));
+        }
+        for (const auto& s : object.host_key_algorithms) {
+            host_key_algorithms.append(QString::fromStdString(s));
+        }
+
         return true;
     }
 
