@@ -1,4 +1,5 @@
 #include "include/configs/outbounds/socks.h"
+#include "include/configs/sub/clash.hpp"
 
 #include <QUrlQuery>
 #include <include/global/Utils.hpp>
@@ -53,6 +54,16 @@ namespace Configs {
         if (object.contains("password")) password = object["password"].toString();
         if (object.contains("version")) version = object["version"].toInt();
         if (object.contains("uot")) uot = object["uot"].toBool();
+        return true;
+    }
+
+    bool socks::ParseFromClash(const clash::Proxies& object)
+    {
+        if (object.type != "socks5") return false;
+        outbound::ParseFromClash(object);
+        username = QString::fromStdString(object.username);
+        password = QString::fromStdString(object.password);
+
         return true;
     }
 

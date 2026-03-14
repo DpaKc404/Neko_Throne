@@ -1,4 +1,5 @@
 #include "include/configs/common/Outbound.h"
+#include "include/configs/sub/clash.hpp"
 #include "include/configs/common/utils.h"
 
 namespace Configs {
@@ -26,6 +27,13 @@ namespace Configs {
         if (object.contains("server")) server = object["server"].toString();
         if (object.contains("server_port")) server_port = object["server_port"].toInt();
         dialFields->ParseFromJson(object);
+        return true;
+    }
+    bool outbound::ParseFromClash(const clash::Proxies& object)
+    {
+        name = QString::fromStdString(object.name);
+        server = QString::fromStdString(object.server);
+        server_port = object.port;
         return true;
     }
     QString outbound::ExportToLink()

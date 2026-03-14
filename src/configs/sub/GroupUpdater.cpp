@@ -2,6 +2,7 @@
 #include "include/configs/proxy/includes.h"
 #include "include/global/HTTPRequestHelper.hpp"
 #include "include/api/RPC.h"
+#include "include/configs/sub/clash.hpp"
 
 #include "include/configs/sub/GroupUpdater.hpp"
 
@@ -79,8 +80,9 @@ namespace Subscription {
             return;
         }
 
-        // Clash format is no longer supported (Clash2Singbox removed)
+        // Clash format
         if (str.contains("proxies:")) {
+            updateClash(str);
             return;
         }
 
@@ -338,6 +340,74 @@ namespace Subscription {
             if (ent == nullptr) continue;
 
             updated_order += ent;
+        }
+    }
+
+    void RawUpdater::updateClash(const QString& str)
+    {
+        try {
+            fkyaml::node node = fkyaml::node::deserialize(str.toStdString());
+            clash::Clash clash_config = node.get_value<clash::Clash>();
+
+            for (const auto& out : clash_config.proxies)
+            {
+                std::shared_ptr<Configs::ProxyEntity> ent;
+
+                if (out.type == "socks5") {
+                    ent = Configs::ProfileManager::NewProxyEntity("socks");
+                    auto ok = ent->Socks()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else if (out.type == "http") {
+                    ent = Configs::ProfileManager::NewProxyEntity("http");
+                    auto ok = ent->Http()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else if (out.type == "ss") {
+                    ent = Configs::ProfileManager::NewProxyEntity("shadowsocks");
+                    auto ok = ent->ShadowSocks()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else if (out.type == "vmess") {
+                    ent = Configs::ProfileManager::NewProxyEntity("vmess");
+                    auto ok = ent->VMess()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else if (out.type == "vless") {
+                    if (!out.encryption.empty() && out.encryption != "none") {
+                        ent = Configs::ProfileManager::NewProxyEntity("xrayvless");
+                        auto ok = ent->XrayVLESS()->ParseFromClash(out);
+                        if (!ok) continue;
+                    } else {
+                        ent = Configs::ProfileManager::NewProxyEntity("vless");
+                        auto ok = ent->VLESS()->ParseFromClash(out);
+                        if (!ok) continue;
+                    }
+                } else if (out.type == "trojan") {
+                    ent = Configs::ProfileManager::NewProxyEntity("trojan");
+                    auto ok = ent->Trojan()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else if (out.type == "anytls") {
+                    ent = Configs::ProfileManager::NewProxyEntity("anytls");
+                    auto ok = ent->AnyTLS()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else if (out.type == "hysteria" || out.type == "hysteria2") {
+                    ent = Configs::ProfileManager::NewProxyEntity("hysteria");
+                    auto ok = ent->Hysteria()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else if (out.type == "tuic") {
+                    ent = Configs::ProfileManager::NewProxyEntity("tuic");
+                    auto ok = ent->TUIC()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else if (out.type == "ssh") {
+                    ent = Configs::ProfileManager::NewProxyEntity("ssh");
+                    auto ok = ent->SSH()->ParseFromClash(out);
+                    if (!ok) continue;
+                } else {
+                    continue;
+                }
+
+                if (ent == nullptr) continue;
+                updated_order += ent;
+            }
+        } catch (const fkyaml::exception &ex) {
+            MessageBoxWarning("YAML Exception", ex.what());
         }
     }
 
