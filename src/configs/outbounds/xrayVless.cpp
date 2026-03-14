@@ -1,6 +1,7 @@
 #include "include/configs/outbounds/xrayVless.h"
 #include "include/configs/sub/clash.hpp"
 
+#include <QJsonArray>
 #include <QUrlQuery>
 
 #include "include/configs/common/utils.h"
@@ -95,13 +96,15 @@ namespace Configs {
     BuildResult xrayVless::BuildXray() {
         QJsonObject object;
         object["protocol"] = "vless";
-        QJsonObject settings;
-        settings["address"] = server;
-        settings["port"] = server_port;
-        settings["id"] = uuid;
-        settings["encryption"] = encryption;
-        if (!flow.isEmpty()) settings["flow"] = flow;
-        object["settings"] = settings;
+        QJsonObject userObj;
+        userObj["id"] = uuid;
+        userObj["encryption"] = encryption;
+        if (!flow.isEmpty()) userObj["flow"] = flow;
+        QJsonObject vnextEntry;
+        vnextEntry["address"] = server;
+        vnextEntry["port"] = server_port;
+        vnextEntry["users"] = QJsonArray{userObj};
+        object["settings"] = QJsonObject{{"vnext", QJsonArray{vnextEntry}}};
         if (auto streamObj = streamSetting->Build().object; !streamObj.isEmpty()) object["streamSettings"] = streamObj;
         if (auto muxObj = multiplex->Build().object; !muxObj.isEmpty()) object["mux"] = muxObj;
         return {object, ""};

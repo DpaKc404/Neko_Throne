@@ -262,6 +262,16 @@ namespace Configs {
             ctx->buildConfigResult->extraCoreData->configDir = GetBasePath();
             ctx->buildConfigResult->extraCoreData->noLog = outbound->noLogs;
         }
+
+        // Check if Xray DNS proxy inbound is needed (main entity or any routing outbound is Xray)
+        if (ctx->ent->outbound->IsXray()) ctx->needsXrayDnsProxy = true;
+        for (auto outboundID : preReqs->routingDeps->neededOutbounds) {
+            auto neededEnt = profileManager->GetProfile(outboundID);
+            if (neededEnt && neededEnt->outbound->IsXray()) {
+                ctx->needsXrayDnsProxy = true;
+                break;
+            }
+        }
     }
 
     void buildLogSections(std::shared_ptr<BuildSingBoxConfigContext> &ctx) {
@@ -561,13 +571,15 @@ namespace Configs {
             inbounds += inboundObj;
         }
 
-        // dns-in for xray DNS proxy
-        inbounds.prepend(QJsonObject{
-            {"tag", "dns-in"},
-            {"type", "direct"},
-            {"listen", "127.0.0.1"},
-            {"listen_port", dataStore->core_dns_in_port}
-        });
+        // xray-dns-in for Xray DNS proxy — separate tag to avoid collision with the user DNS server inbound
+        if (!ctx->forTest && ctx->needsXrayDnsProxy) {
+            inbounds.prepend(QJsonObject{
+                {"tag", "xray-dns-in"},
+                {"type", "direct"},
+                {"listen", "127.0.0.1"},
+                {"listen_port", dataStore->core_dns_in_port}
+            });
+        }
 
         // Hijack
         if (dataStore->enable_redirect && !ctx->forTest) {
@@ -742,6 +754,20 @@ namespace Configs {
             auto redirRule = std::make_shared<RouteRule>();
             redirRule->action = "hijack-dns";
             redirRule->inbound = {"dns-in"};
+
+            routeChain->Rules.prepend(redirRule);
+            routeChain->Rules.prepend(sniffRule);
+        }
+        // Xray DNS proxy inbound — always add sniff+hijack-dns when Xray DNS proxy inbound is present
+        if (ctx->needsXrayDnsProxy && !ctx->forTest)
+        {
+            auto sniffRule = std::make_shared<RouteRule>();
+            sniffRule->action = "sniff";
+            sniffRule->inbound = {"xray-dns-in"};
+
+            auto redirRule = std::make_shared<RouteRule>();
+            redirRule->action = "hijack-dns";
+            redirRule->inbound = {"xray-dns-in"};
 
             routeChain->Rules.prepend(redirRule);
             routeChain->Rules.prepend(sniffRule);
