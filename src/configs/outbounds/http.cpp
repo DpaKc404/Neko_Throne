@@ -1,4 +1,5 @@
 #include "include/configs/outbounds/http.h"
+#include "include/configs/sub/clash.hpp"
 
 #include <QUrlQuery>
 #include <include/global/Utils.hpp>
@@ -50,6 +51,16 @@ namespace Configs {
         if (object.contains("path")) path = object["path"].toString();
         if (object.contains("headers") && object["headers"].isObject()) headers = jsonObjectToQStringList(object["headers"].toObject());
         if (object.contains("tls")) tls->ParseFromJson(object["tls"].toObject());
+        return true;
+    }
+    bool http::ParseFromClash(const clash::Proxies& object)
+    {
+        if (object.type != "http") return false;
+        outbound::ParseFromClash(object);
+        username = QString::fromStdString(object.username);
+        password = QString::fromStdString(object.password);
+
+        tls->ParseFromClash(object);
         return true;
     }
     QString http::ExportToLink()
